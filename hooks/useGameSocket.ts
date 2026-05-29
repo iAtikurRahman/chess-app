@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import Pusher from "pusher-js";
 import { Chess } from "chess.js";
-import { socket } from "../lib/socket";
 import { useSound } from "./useSound";
 import { useStockfishBrowser } from "./useStockfishBrowser";
 import type { GameState, GameResult, Suggestion, Session, MoveInput } from "../types";
 
 const INITIAL_STATE: GameState = {
-  fen: "start",
+  fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
   sanHistory: [],
   history: [],
   captured: { white: [], black: [] },
@@ -26,7 +26,7 @@ interface UndoRequest {
 }
 
 export function useGameSocket(session: Session) {
-  const { roomId, color: myColor, isPractice } = session;
+  const { roomId, color: myColor, isPractice, playerName } = session;
 
   const [gameState, setGameState] = useState<GameState>(session.state ?? INITIAL_STATE);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
@@ -38,15 +38,21 @@ export function useGameSocket(session: Session) {
   );
 
   const sounds = useSound();
-  const { getBestMove: getBestMoveBrowser } = useStockfishBrowser(!!isPractice);
+  // Always enable browser Stockfish for both practice and multiplayer suggestions
+  const { getBestMove: getBestMoveBrowser } = useStockfishBrowser(true);
   const latestFenRef = useRef<string | null>(null);
+  const gameStateRef = useRef<GameState>(session.state ?? INITIAL_STATE);
 
-  const computeBrowserSuggestion = useCallback(
+  // Keep ref in sync so action callbacks always see the latest state
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
+
+  const computeSuggestion = useCallback(
     (fen: string) => {
-      if (!isPractice) return;
       latestFenRef.current = fen;
       setSuggestion(null);
-      getBestMoveBrowser(fen, 12).then((uciMove) => {
+      getBestMoveBrowser(fen, isPractice ? 12 : 14).then((uciMove) => {
         if (latestFenRef.current !== fen) return;
         if (!uciMove || uciMove === "(none)") return;
         setSuggestion({
@@ -60,162 +66,172 @@ export function useGameSocket(session: Session) {
     [isPractice, getBestMoveBrowser]
   );
 
-  // Trigger first suggestion in practice mode on mount
+  // Compute initial suggestion for practice mode
   useEffect(() => {
     if (!isPractice) return;
-    const t = setTimeout(() => {
-      const fen =
-        gameState.fen && gameState.fen !== "start"
-          ? gameState.fen
-          : "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-      computeBrowserSuggestion(fen);
-    }, 500);
+    const fen = session.state?.fen ?? INITIAL_STATE.fen;
+    const t = setTimeout(() => computeSuggestion(fen), 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Socket event listeners
+  // Client-side timer countdown (synced from server on each move-made event)
   useEffect(() => {
-    if (!socket) return;
-    const sock = socket;
-    const applyState = (state: GameState) => setGameState(state);
+    if (gameResult || gameState.isGameOver) return;
+    if (!gameState.players.white || !gameState.players.black) return;
 
-    sock.on("game-started", ({ state }: { state: GameState }) => {
-      applyState(state);
-      setWaitingForOpponent(false);
-      sock.emit("request-suggestion", { roomId });
+    const interval = setInterval(() => {
+      setGameState((prev) => {
+        if (prev.isGameOver) return prev;
+        const activeSide = prev.turn;
+        const remaining = prev.timers[activeSide];
+        if (remaining <= 0) return prev;
+        return { ...prev, timers: { ...prev.timers, [activeSide]: remaining - 1 } };
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [
+    gameState.turn,
+    gameState.players.white,
+    gameState.players.black,
+    gameResult,
+    gameState.isGameOver,
+  ]);
+
+  // Pusher real-time subscription
+  useEffect(() => {
+    const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+      cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
     });
 
-    sock.on("opponent-joined", ({ state }: { state: GameState }) => {
-      applyState(state);
+    const channel = pusher.subscribe(`game-${roomId}`);
+
+    channel.bind("game-started", ({ state }: { state: GameState }) => {
+      setGameState(state);
+      setWaitingForOpponent(false);
+      if (state.fen) computeSuggestion(state.fen);
+    });
+
+    channel.bind("opponent-joined", ({ state }: { state: GameState }) => {
+      setGameState(state);
       setWaitingForOpponent(false);
     });
 
-    sock.on("move-made", ({ move, state }: { move: { captured?: string; flags?: string }; state: GameState }) => {
-      applyState(state);
-      if (move.captured) sounds.playCapture();
-      else if (move.flags?.includes("k") || move.flags?.includes("q")) sounds.playCastle();
-      else sounds.playMove();
-      if (state.isCheck) sounds.playCheck();
-      if (isPractice && state.fen && !state.isGameOver) {
-        computeBrowserSuggestion(state.fen);
+    channel.bind(
+      "move-made",
+      ({ move, state }: { move: { captured?: string; flags?: string }; state: GameState }) => {
+        setGameState(state);
+        if (move.captured) sounds.playCapture();
+        else if (move.flags?.includes("k") || move.flags?.includes("q")) sounds.playCastle();
+        else sounds.playMove();
+        if (state.isCheck) sounds.playCheck();
+        if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
       }
-    });
+    );
 
-    sock.on("suggestion", (data: Suggestion) => {
-      if (!isPractice) setSuggestion(data);
-    });
-
-    sock.on("timer-update", ({ timers }: { timers: { white: number; black: number } }) => {
-      setGameState((prev) => ({ ...prev, timers }));
-    });
-
-    sock.on("game-over", (result: GameResult) => {
+    channel.bind("game-over", (result: GameResult) => {
       setGameResult(result);
       sounds.playGameOver();
-      sock.emit("stop-timer", { roomId });
     });
 
-    sock.on("undo-requested", ({ requestedBy }: { requestedBy: string }) => {
+    channel.bind("undo-requested", ({ requestedBy }: { requestedBy: string }) => {
       setUndoRequest({ requestedBy });
     });
 
-    sock.on("undo-accepted", ({ state }: { state: GameState }) => {
-      applyState(state);
+    channel.bind("undo-accepted", ({ state }: { state: GameState }) => {
+      setGameState(state);
       setUndoRequest(null);
       setSuggestion(null);
-      if (isPractice && state.fen && !state.isGameOver) {
-        computeBrowserSuggestion(state.fen);
-      }
+      if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
     });
 
-    sock.on("undo-rejected", () => {
+    channel.bind("undo-rejected", () => {
       setUndoRequest(null);
     });
 
-    sock.on("game-restarted", ({ state }: { state: GameState }) => {
-      applyState(state);
+    channel.bind("game-restarted", ({ state }: { state: GameState }) => {
+      setGameState(state);
       setGameResult(null);
       setSuggestion(null);
-      if (isPractice && state.fen && !state.isGameOver) {
-        computeBrowserSuggestion(state.fen);
-      }
+      if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
     });
 
-    sock.on("player-disconnected", ({ color }: { color: string }) => {
+    channel.bind("player-disconnected", ({ color }: { color: string }) => {
       setConnectionStatus(`${color}-disconnected`);
     });
 
-    sock.on("player-reconnected", () => {
+    channel.bind("player-reconnected", () => {
       setConnectionStatus("connected");
-      sock.emit("request-suggestion", { roomId });
-    });
-
-    sock.on("invalid-move", () => {
-      sounds.playError();
-    });
-
-    sock.on("error", (err: { message: string }) => {
-      console.error("[socket error]", err.message);
     });
 
     return () => {
-      sock.off("game-started");
-      sock.off("opponent-joined");
-      sock.off("move-made");
-      sock.off("suggestion");
-      sock.off("timer-update");
-      sock.off("game-over");
-      sock.off("undo-requested");
-      sock.off("undo-accepted");
-      sock.off("undo-rejected");
-      sock.off("game-restarted");
-      sock.off("player-disconnected");
-      sock.off("player-reconnected");
-      sock.off("invalid-move");
-      sock.off("error");
+      channel.unbind_all();
+      pusher.unsubscribe(`game-${roomId}`);
+      pusher.disconnect();
     };
-  }, [roomId, sounds]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
-  const getChess = useCallback(() => {
-    const c = new Chess();
-    if (gameState.fen && gameState.fen !== "start") {
-      try {
-        c.load(gameState.fen);
-      } catch {
-        /* keep default */
-      }
+  /** POST to /api/room/<endpoint> */
+  const post = useCallback(async (endpoint: string, body: object) => {
+    try {
+      await fetch(`/api/room/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      console.error(`[post ${endpoint}]`, err);
     }
-    return c;
-  }, [gameState.fen]);
+  }, []);
 
   const makeMove = useCallback(
     (move: MoveInput) => {
-      if (gameResult || gameState.isGameOver) return false;
+      const state = gameStateRef.current;
+      if (gameResult || state.isGameOver) return false;
       const isMyTurn = isPractice
         ? true
         : myColor !== "spectator" &&
-          ((gameState.turn === "white" && myColor === "white") ||
-            (gameState.turn === "black" && myColor === "black"));
+          ((state.turn === "white" && myColor === "white") ||
+            (state.turn === "black" && myColor === "black"));
       if (!isMyTurn) return false;
-      socket?.emit("make-move", { roomId, move });
+      void post("move", { roomId, move, playerName });
       setSuggestion(null);
       return true;
     },
-    [roomId, myColor, isPractice, gameState.turn, gameState.isGameOver, gameResult]
+    [roomId, playerName, myColor, isPractice, gameResult, post]
   );
 
-  const resign = useCallback(() => socket?.emit("resign", { roomId }), [roomId]);
-  const requestUndo = useCallback(() => socket?.emit("request-undo", { roomId }), [roomId]);
+  const getChess = useCallback(() => {
+    const c = new Chess();
+    const fen = gameStateRef.current.fen;
+    if (fen && fen !== "start") {
+      try { c.load(fen); } catch { /* keep default */ }
+    }
+    return c;
+  }, []);
+
+  const resign = useCallback(
+    () => void post("action", { roomId, action: "resign", playerName }),
+    [roomId, playerName, post]
+  );
+  const requestUndo = useCallback(
+    () => void post("action", { roomId, action: "request-undo", playerName }),
+    [roomId, playerName, post]
+  );
   const acceptUndo = useCallback(() => {
-    socket?.emit("accept-undo", { roomId });
+    void post("action", { roomId, action: "accept-undo", playerName });
     setUndoRequest(null);
-  }, [roomId]);
+  }, [roomId, playerName, post]);
   const rejectUndo = useCallback(() => {
-    socket?.emit("reject-undo", { roomId });
+    void post("action", { roomId, action: "reject-undo", playerName });
     setUndoRequest(null);
-  }, [roomId]);
-  const restartGame = useCallback(() => socket?.emit("restart-game", { roomId }), [roomId]);
+  }, [roomId, playerName, post]);
+  const restartGame = useCallback(
+    () => void post("action", { roomId, action: "restart", playerName }),
+    [roomId, playerName, post]
+  );
 
   return {
     gameState,

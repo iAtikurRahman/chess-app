@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { socket } from "../lib/socket";
 import type { Session } from "../types";
 
 const COLOR_OPTIONS = [
@@ -10,10 +9,11 @@ const COLOR_OPTIONS = [
 
 interface RoomLobbyProps {
   onRoomJoined: (session: Session) => void;
+  defaultPlayerName?: string;
 }
 
-export default function RoomLobby({ onRoomJoined }: RoomLobbyProps) {
-  const [playerName, setPlayerName] = useState("");
+export default function RoomLobby({ onRoomJoined, defaultPlayerName = "" }: RoomLobbyProps) {
+  const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [color, setColor] = useState("white");
   const [practiceColor, setPracticeColor] = useState<"white" | "black">("white");
   const [joinRoomId, setJoinRoomId] = useState("");
@@ -29,78 +29,69 @@ export default function RoomLobby({ onRoomJoined }: RoomLobbyProps) {
     return true;
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!validate()) return;
     setError("");
     setLoading(true);
-
-    socket!.connect();
-    socket!.emit("create-room", { playerName: playerName.trim(), color });
-
-    socket!.once("room-created", (data: Omit<Session, "playerName">) => {
-      setLoading(false);
+    try {
+      const res = await fetch("/api/room/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: playerName.trim(), color }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Failed to create room."); return; }
       onRoomJoined({ ...data, playerName: playerName.trim() });
-    });
-
-    socket!.once("connect_error", () => {
-      setLoading(false);
-      setError("Cannot reach the server. Make sure the backend is running.");
-      socket!.disconnect();
-    });
-  };
-
-  const handleJoin = () => {
-    if (!validate()) return;
-    if (!joinRoomId.trim()) {
-      setError("Enter a room ID.");
-      return;
-    }
-    setError("");
-    setLoading(true);
-
-    socket!.connect();
-    socket!.emit("join-room", {
-      roomId: joinRoomId.trim().toUpperCase(),
-      playerName: playerName.trim(),
-      color,
-    });
-
-    socket!.once("room-joined", (data: Omit<Session, "playerName">) => {
-      setLoading(false);
-      onRoomJoined({ ...data, playerName: playerName.trim() });
-    });
-
-    socket!.once("error", (err: { message: string }) => {
-      setLoading(false);
-      setError(err.message);
-      socket!.disconnect();
-    });
-
-    socket!.once("connect_error", () => {
-      setLoading(false);
+    } catch {
       setError("Cannot reach the server.");
-      socket!.disconnect();
-    });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handlePractice = () => {
+  const handleJoin = async () => {
+    if (!validate()) return;
+    if (!joinRoomId.trim()) { setError("Enter a room ID."); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/room/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roomId: joinRoomId.trim().toUpperCase(),
+          playerName: playerName.trim(),
+          color,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Failed to join room."); return; }
+      onRoomJoined({ ...data, playerName: playerName.trim() });
+    } catch {
+      setError("Cannot reach the server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePractice = async () => {
     if (!validate()) return;
     setError("");
     setLoading(true);
-
-    socket!.connect();
-    socket!.emit("create-practice-room", { playerName: playerName.trim() });
-
-    socket!.once("room-created", (data: Omit<Session, "playerName" | "isPractice" | "practiceColor">) => {
-      setLoading(false);
+    try {
+      const res = await fetch("/api/room/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerName: playerName.trim(), isPractice: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error || "Failed to start practice."); return; }
       onRoomJoined({ ...data, playerName: playerName.trim(), isPractice: true, practiceColor });
-    });
-
-    socket!.once("connect_error", () => {
+    } catch {
+      setError("Cannot reach the server.");
+    } finally {
       setLoading(false);
-      setError("Cannot reach the server. Make sure the backend is running.");
-      socket!.disconnect();
-    });
+    }
   };
 
   return (
@@ -278,7 +269,7 @@ export default function RoomLobby({ onRoomJoined }: RoomLobbyProps) {
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-6">
-          Two players · Stockfish AI hints · Real-time via Socket.IO · Solo practice mode
+          Two players · Stockfish AI hints · Real-time via Pusher · Solo practice mode
         </p>
       </div>
     </div>
