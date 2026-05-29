@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark-900 text-gray-100 font-sans antialiased;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a #141414;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #141414;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border-radius: 3px;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .board-shadow {
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.8), 0 0 0 2px rgba(255, 255, 255, 0.06);
+  }
+
+  .card {
+    @apply glass rounded-xl p-4;
+  }
+}
