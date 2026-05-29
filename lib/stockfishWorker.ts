@@ -10,16 +10,16 @@ const stockfishPath = path.join(stockfishDir, "src", "stockfish.asm.js");
 // Load the engine
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const stockfish = require(stockfishPath) as () => {
-  addMessageListener: (cb: (msg: string) => void) => void;
+  onmessage: ((msg: string) => void) | null;
   postMessage: (msg: string) => void;
 };
 
 // Create engine instance
 const engine = stockfish();
 
-engine.addMessageListener((msg: string) => {
+engine.onmessage = (msg: string) => {
   parentPort!.postMessage(msg);
-});
+};
 
 parentPort!.on("message", (msg: string) => {
   engine.postMessage(msg);

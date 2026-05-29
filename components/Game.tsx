@@ -75,10 +75,29 @@ export default function Game({ session, onLeave }: GameProps) {
 
   const handleCopyRoomLink = useCallback(() => {
     const text = `Join my Chess Arena game! Room ID: ${roomId}`;
-    navigator.clipboard.writeText(text).then(() => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => {
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+
+    function fallbackCopy(str: string) {
+      const el = document.createElement("textarea");
+      el.value = str;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }
   }, [roomId]);
 
   const handleMove = useCallback(
