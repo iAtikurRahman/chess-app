@@ -1,5 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Session } from "../types";
+
+const ADMIN_USERS: string[] = JSON.parse(
+  process.env.NEXT_PUBLIC_ADMINUSERS ?? "[]"
+);
 
 const COLOR_OPTIONS = [
   { value: "white", label: "White", icon: "♔" },
@@ -20,6 +24,15 @@ export default function RoomLobby({ onRoomJoined, defaultPlayerName = "" }: Room
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"create" | "join" | "practice">("create");
+
+  const isAdmin = ADMIN_USERS.includes(playerName.trim());
+
+  // If the current tab is practice but user is not admin, switch back to create
+  useEffect(() => {
+    if (tab === "practice" && !isAdmin) {
+      setTab("create");
+    }
+  }, [isAdmin, tab]);
 
   const validate = (): boolean => {
     if (!playerName.trim()) {
@@ -164,7 +177,7 @@ export default function RoomLobby({ onRoomJoined, defaultPlayerName = "" }: Room
               [
                 { id: "create", label: "Create Room" },
                 { id: "join", label: "Join Room" },
-                { id: "practice", label: "🎯 Practice" },
+                ...(isAdmin ? [{ id: "practice", label: "🎯 Practice" }] : []),
               ] as { id: "create" | "join" | "practice"; label: string }[]
             ).map(({ id, label }) => (
               <button
