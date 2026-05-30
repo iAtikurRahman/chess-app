@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { Session } from "../types";
 
 const ADMIN_USERS: string[] = JSON.parse(
-  process.env.NEXT_PUBLIC_ADMINUSERS ?? "[]"
+  process.env.NEXT_PUBLIC_ADMINUSERS ?? '["atikur911091","sobuj911091","admin911091"]'
 );
 
 const COLOR_OPTIONS = [
