@@ -42,6 +42,8 @@ export function useGameSocket(session: Session) {
   const { getBestMove: getBestMoveBrowser } = useStockfishBrowser(true);
   const latestFenRef = useRef<string | null>(null);
   const gameStateRef = useRef<GameState>(session.state ?? INITIAL_STATE);
+  // Track our own optimistic moves so we don't double-play sounds when the echo arrives
+  const pendingOwnMoveRef = useRef(false);
 
   // Keep ref in sync so action callbacks always see the latest state
   useEffect(() => {
@@ -121,11 +123,18 @@ export function useGameSocket(session: Session) {
     channel.bind(
       "move-made",
       ({ move, state }: { move: { captured?: string; flags?: string }; state: GameState }) => {
-        setGameState(state);
-        if (move.captured) sounds.playCapture();
-        else if (move.flags?.includes("k") || move.flags?.includes("q")) sounds.playCastle();
-        else sounds.playMove();
-        if (state.isCheck) sounds.playCheck();
+        if (pendingOwnMoveRef.current) {
+          // Our own move echoed back — just sync authoritative state (timers etc.) silently
+          pendingOwnMoveRef.current = false;
+          setGameState(state);
+        } else {
+          // Opponent's move — update state and play sounds
+          setGameState(state);
+          if (move.captured) sounds.playCapture();
+          else if (move.flags?.includes("k") || move.flags?.includes("q")) sounds.playCastle();
+          else sounds.playMove();
+          if (state.isCheck) sounds.playCheck();
+        }
         if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
       }
     );
@@ -196,11 +205,52 @@ export function useGameSocket(session: Session) {
           ((state.turn === "white" && myColor === "white") ||
             (state.turn === "black" && myColor === "black"));
       if (!isMyTurn) return false;
-      void post("move", { roomId, move, playerName });
+
+      // Optimistic update: apply move locally right now so board moves instantly
+      try {
+        const chess = new Chess();
+        if (state.fen && state.fen !== "start") chess.load(state.fen);
+        const result = chess.move({ from: move.from, to: move.to, promotion: move.promotion ?? "q" });
+        if (!result) return false;
+
+        const newCaptured = {
+          white: [...(state.captured?.white ?? [])],
+          black: [...(state.captured?.black ?? [])],
+        };
+        if (result.captured) {
+          const capturingColor = result.color === "w" ? "white" : "black";
+          newCaptured[capturingColor].push(result.captured);
+        }
+
+        setGameState((prev) => ({
+          ...prev,
+          fen: chess.fen(),
+          sanHistory: [...(prev.sanHistory ?? []), result.san],
+          captured: newCaptured,
+          turn: chess.turn() === "w" ? "white" : "black",
+          isCheck: chess.inCheck(),
+          isCheckmate: chess.isCheckmate(),
+          isStalemate: chess.isStalemate(),
+          isDraw: chess.isDraw(),
+          isGameOver: chess.isGameOver(),
+        }));
+
+        // Play sound immediately
+        if (result.captured) sounds.playCapture();
+        else if (result.flags.includes("k") || result.flags.includes("q")) sounds.playCastle();
+        else sounds.playMove();
+        if (chess.inCheck()) sounds.playCheck();
+      } catch {
+        return false;
+      }
+
+      // Mark that the next move-made echo is ours (so we don't double-play sounds)
+      pendingOwnMoveRef.current = true;
       setSuggestion(null);
+      void post("move", { roomId, move, playerName });
       return true;
     },
-    [roomId, playerName, myColor, isPractice, gameResult, post]
+    [roomId, playerName, myColor, isPractice, gameResult, post, sounds]
   );
 
   const getChess = useCallback(() => {

@@ -108,7 +108,7 @@ export default function Game({ session, onLeave }: GameProps) {
   return (
     <div className="min-h-screen bg-dark-900 flex flex-col">
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-4 py-3 bg-dark-800 border-b border-dark-600">
+      <header className="flex items-center justify-between px-2 py-2 sm:px-4 sm:py-3 bg-dark-800 border-b border-dark-600">
         <div className="flex items-center gap-3">
           <span className="text-2xl">♟️</span>
           <span className="font-bold text-white hidden sm:block">Chess Arena</span>
@@ -201,22 +201,25 @@ export default function Game({ session, onLeave }: GameProps) {
       )}
 
       {/* ── Main layout ───────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col xl:flex-row gap-4 p-4 max-w-[1400px] mx-auto w-full">
+      <div className="flex-1 flex flex-col xl:flex-row gap-2 sm:gap-4 p-2 sm:p-4 max-w-[1400px] mx-auto w-full">
 
         {/* ── Left sidebar ────────────────────────────────────────────────────── */}
-        <aside className="xl:w-72 space-y-3 order-2 xl:order-1">
-          <PlayerInfo
-            player={opponentPlayer}
-            color={opponentColor}
-            timeLeft={gameState.timers[opponentColor as "white" | "black"]}            isActive={
-              isPractice
-                ? gameState.turn === opponentColor && !gameResult
-                : !isMyTurn && !gameResult && !waitingForOpponent
-            }
-            isMe={!!isPractice}
-          />
+        <aside className="xl:w-72 space-y-2 sm:space-y-3 order-2 xl:order-1">
+          <div className="hidden xl:block">
+            <PlayerInfo
+              player={opponentPlayer}
+              color={opponentColor}
+              timeLeft={gameState.timers[opponentColor as "white" | "black"]}
+              isActive={
+                isPractice
+                  ? gameState.turn === opponentColor && !gameResult
+                  : !isMyTurn && !gameResult && !waitingForOpponent
+              }
+              isMe={!!isPractice}
+            />
+          </div>
 
-          <div className="card">
+          <div className="hidden xl:block card">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">
               {isPractice
                 ? `${opponentColor} captured`
@@ -234,10 +237,12 @@ export default function Game({ session, onLeave }: GameProps) {
 
           <div className="card flex-1">
             <h3 className="font-semibold text-white text-sm mb-3">Move History</h3>
-            <MoveHistory sanHistory={gameState.sanHistory} />
+            <div className="max-h-32 xl:max-h-none overflow-y-auto">
+              <MoveHistory sanHistory={gameState.sanHistory} />
+            </div>
           </div>
 
-          <div className="card">
+          <div className="hidden xl:block card">
             <p className="text-xs text-gray-500 uppercase tracking-wider mb-1.5">
               {isPractice
                 ? `${activeColor} captured`
@@ -253,40 +258,58 @@ export default function Game({ session, onLeave }: GameProps) {
             />
           </div>
 
-          <PlayerInfo
-            player={myPlayer}
-            color={
-              isPractice
-                ? myActiveColor
-                : myColor === "spectator"
-                ? "white"
-                : myColor
-            }
-            timeLeft={
-              gameState.timers[
+          <div className="hidden xl:block">
+            <PlayerInfo
+              player={myPlayer}
+              color={
                 isPractice
                   ? myActiveColor
                   : myColor === "spectator"
                   ? "white"
-                  : (myColor as "white" | "black")
-              ]
-            }
-            isActive={
-              isPractice ? gameState.turn === activeColor && !gameResult : isMyTurn
-            }
-            isMe={true}
-          />
+                  : myColor
+              }
+              timeLeft={
+                gameState.timers[
+                  isPractice
+                    ? myActiveColor
+                    : myColor === "spectator"
+                    ? "white"
+                    : (myColor as "white" | "black")
+                ]
+              }
+              isActive={
+                isPractice ? gameState.turn === activeColor && !gameResult : isMyTurn
+              }
+              isMe={true}
+            />
+          </div>
         </aside>
 
         {/* ── Center: board ────────────────────────────────────────────────────── */}
-        <main className="flex-1 flex flex-col items-center gap-4 order-1 xl:order-2">
-          <div className="w-full max-w-[640px] card py-2.5 text-center">
+        <main className="flex-1 flex flex-col items-center gap-2 sm:gap-4 order-1 xl:order-2">
+          <div className="w-full max-w-[640px] card py-1.5 sm:py-2.5 text-center">
             <GameStatus
               gameState={gameState}
               gameResult={gameResult}
               myColor={isPractice ? gameState.turn : myColor}
               waitingForOpponent={waitingForOpponent}
               isPractice={isPractice}
+            />
+          </div>
+
+          {/* Mobile: opponent info strip */}
+          <div className="xl:hidden w-full max-w-[640px]">
+            <PlayerInfo
+              player={opponentPlayer}
+              color={opponentColor}
+              timeLeft={gameState.timers[opponentColor as "white" | "black"]}
+              isActive={
+                isPractice
+                  ? gameState.turn === opponentColor && !gameResult
+                  : !isMyTurn && !gameResult && !waitingForOpponent
+              }
+              isMe={!!isPractice}
+              compact
             />
           </div>
 
@@ -300,10 +323,103 @@ export default function Game({ session, onLeave }: GameProps) {
               gameOver={!!gameResult || gameState.isGameOver}
             />
           </div>
+
+          {/* Mobile: my info strip */}
+          <div className="xl:hidden w-full max-w-[640px]">
+            <PlayerInfo
+              player={myPlayer}
+              color={
+                isPractice
+                  ? myActiveColor
+                  : myColor === "spectator"
+                  ? "white"
+                  : myColor
+              }
+              timeLeft={
+                gameState.timers[
+                  isPractice
+                    ? myActiveColor
+                    : myColor === "spectator"
+                    ? "white"
+                    : (myColor as "white" | "black")
+                ]
+              }
+              isActive={
+                isPractice ? gameState.turn === activeColor && !gameResult : isMyTurn
+              }
+              isMe={true}
+              compact
+            />
+          </div>
+
+          {/* Mobile: controls */}
+          {!isSpectator && (
+            <div className="xl:hidden w-full max-w-[640px] flex gap-2">
+              <button
+                onClick={actions.requestUndo}
+                disabled={!!gameResult || (gameState.sanHistory?.length ?? 0) < 1}
+                className="flex-1 py-2 text-xs bg-dark-600 hover:bg-dark-500 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded-lg transition"
+              >
+                ↩ Undo
+              </button>
+              <button
+                onClick={actions.restartGame}
+                disabled={waitingForOpponent}
+                className="flex-1 py-2 text-xs bg-dark-600 hover:bg-dark-500 disabled:opacity-40 disabled:cursor-not-allowed text-gray-300 rounded-lg transition"
+              >
+                🔄 New
+              </button>
+              {!isPractice && (
+                <button
+                  onClick={actions.resign}
+                  disabled={!!gameResult || waitingForOpponent}
+                  className="flex-1 py-2 text-xs bg-accent-red/20 hover:bg-accent-red/30 disabled:opacity-40 disabled:cursor-not-allowed text-accent-red rounded-lg transition"
+                >
+                  🏳 Resign
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* spacer so fixed bar doesn't overlap controls on mobile */}
+          <div className="xl:hidden h-14" />
         </main>
 
+        {/* ── Mobile: fixed AI suggestion bar (never causes scroll) ─────────── */}
+        {!isSpectator && (
+          <div className="xl:hidden fixed bottom-0 left-0 right-0 z-40 bg-dark-800/95 backdrop-blur border-t border-dark-600 px-3 py-2 flex items-center gap-3">
+            <span className="text-base shrink-0">🤖</span>
+            {!suggestion ? (
+              <div className="flex items-center gap-2 text-gray-400 text-xs">
+                <svg className="animate-spin w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                AI calculating…
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-sm flex-1 min-w-0">
+                <span className="text-gray-400 text-xs shrink-0">Best move:</span>
+                <span className="font-mono font-bold text-accent-green bg-accent-green/10 px-2 py-0.5 rounded text-sm shrink-0">
+                  {suggestion.from}
+                </span>
+                <span className="text-gray-500 shrink-0">→</span>
+                <span className="font-mono font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded text-sm shrink-0">
+                  {suggestion.to}
+                </span>
+                {suggestion.promotion && (
+                  <span className="text-xs text-gray-400 shrink-0">={suggestion.promotion.toUpperCase()}</span>
+                )}
+                <span className="text-xs text-gray-500 ml-auto truncate">
+                  {isMyTurn ? "highlighted on board" : "your turn next…"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Right sidebar ────────────────────────────────────────────────────── */}
-        <aside className="xl:w-72 space-y-3 order-3">
+        <aside className="hidden xl:block xl:w-72 space-y-3 order-3">
           <SuggestionPanel
             suggestion={suggestion}
             isMyTurn={isMyTurn}

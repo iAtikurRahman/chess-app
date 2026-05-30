@@ -120,10 +120,10 @@ export default function RoomLobby({ onRoomJoined, defaultPlayerName = "" }: Room
 
       <div className="relative w-full max-w-md animate-slide-up">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="text-6xl mb-3">♟️</div>
-          <h1 className="text-4xl font-bold tracking-tight text-white">Chess Arena</h1>
-          <p className="text-gray-400 mt-2">Real-time chess with AI suggestions</p>
+        <div className="text-center mb-4 sm:mb-8">
+          <div className="text-5xl sm:text-6xl mb-2 sm:mb-3">♟️</div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">Chess Arena</h1>
+          <p className="text-gray-400 mt-2 text-sm sm:text-base">Real-time chess with AI suggestions</p>
         </div>
 
         {/* Card */}

@@ -6,6 +6,7 @@ interface PlayerInfoProps {
   timeLeft: number;
   isActive: boolean;
   isMe: boolean;
+  compact?: boolean;
 }
 
 function formatTime(seconds: number): string {
@@ -14,8 +15,49 @@ function formatTime(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export default function PlayerInfo({ player, color, timeLeft, isActive, isMe }: PlayerInfoProps) {
+export default function PlayerInfo({ player, color, timeLeft, isActive, isMe, compact = false }: PlayerInfoProps) {
   const isLow = timeLeft <= 30;
+
+  if (compact) {
+    return (
+      <div
+        className={`flex items-center justify-between px-3 py-2 rounded-xl border transition
+          ${isActive ? "border-accent-blue bg-accent-blue/10" : "border-dark-400 bg-dark-700/50"}`}
+      >
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-sm border-2
+              ${color === "white" ? "bg-gray-100 border-gray-300 text-gray-900" : "bg-gray-800 border-gray-600 text-gray-100"}`}
+          >
+            {color === "white" ? "♔" : "♚"}
+          </div>
+          <div>
+            <div className="flex items-center gap-1">
+              <span className="font-semibold text-white text-xs">
+                {player?.name || (color === "white" ? "White" : "Black")}
+              </span>
+              {isMe && (
+                <span className="text-xs text-accent-blue bg-accent-blue/10 px-1 py-0.5 rounded">
+                  You
+                </span>
+              )}
+            </div>
+            <span
+              className={`inline-block w-1.5 h-1.5 rounded-full mt-0.5 ${
+                player?.connected !== false ? "bg-accent-green" : "bg-gray-500"
+              }`}
+            />
+          </div>
+        </div>
+        <div
+          className={`font-mono font-bold text-sm tabular-nums
+            ${isActive ? (isLow ? "text-accent-red animate-pulse2" : "text-white") : "text-gray-500"}`}
+        >
+          {formatTime(timeLeft)}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
