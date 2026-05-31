@@ -202,7 +202,6 @@ export default function RoomLobby({
 
       <div className="relative w-full max-w-md animate-slide-up">
         <div className="text-center mb-4 sm:mb-8">
-          <div className="text-5xl sm:text-6xl mb-2 sm:mb-3">\u265f\uFE0F</div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">Chess Arena</h1>
           <p className="text-gray-400 mt-2 text-sm sm:text-base">Real-time chess with AI suggestions</p>
         </div>
@@ -498,7 +497,7 @@ export default function RoomLobby({
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-6">
-          Multiplayer \u00B7 vs Stockfish Bot \u00B7 Challenge friends \u00B7 AI hints \u00B7 Practice (admin)
+          Multiplayer vs Stockfish Bot Challenge friends AI hints Practice (admin)
         </p>
       </div>
     </div>

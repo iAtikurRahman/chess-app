@@ -53,12 +53,13 @@ export default function HomePage() {
   // Subscribe to personal Pusher channel for incoming challenges
   useEffect(() => {
     if (status !== "authenticated" || !authSession?.user?.email) return;
+    const email = authSession.user.email;
     const pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
       cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
     });
     pusherRef.current = pusher;
 
-    const channel = pusher.subscribe(personalChannel(authSession.user.email));
+    const channel = pusher.subscribe(personalChannel(email));
     channel.bind("challenge-received", (data: IncomingChallenge) => {
       setIncomingChallenge(data);
       const secondsLeft = Math.max(0, Math.round((data.expiresAt - Date.now()) / 1000));
@@ -67,7 +68,7 @@ export default function HomePage() {
 
     return () => {
       channel.unbind_all();
-      pusher.unsubscribe(personalChannel(authSession.user.email!));
+      pusher.unsubscribe(personalChannel(email));
       pusher.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
