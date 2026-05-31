@@ -77,6 +77,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const wasPractice = room.isPractice;
       const playerOneName = room.players.white?.name ?? room.players.black?.name ?? "Player";
       const playerTwoName = room.players.black?.name ?? playerOneName;
+      const tc = room.timeControl ?? 600;
 
       room.fen = chess.fen();
       room.sanHistory = [];
@@ -84,7 +85,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       room.gameOver = false;
       room.winner = null;
       room.pendingUndo = null;
-      room.timers = { white: 600, black: 600 };
+      room.timers = { white: tc, black: tc };
       room.lastMoveAt = Date.now();
       room.gameStarted = true;
 

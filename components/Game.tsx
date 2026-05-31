@@ -23,6 +23,7 @@ export default function Game({ session, onLeave }: GameProps) {
     undoRequest,
     connectionStatus,
     waitingForOpponent,
+    isBotGame,
     actions,
   } = useGameSocket(session);
 
@@ -74,16 +75,18 @@ export default function Game({ session, onLeave }: GameProps) {
   const capturedByOpponent = gameState.captured?.[opponentColor as "white" | "black"] ?? [];
 
   const handleCopyRoomLink = useCallback(() => {
-    const text = `Join my Chess Arena game! Room ID: ${roomId}`;
+    const url = typeof window !== "undefined"
+      ? `${window.location.origin}/?room=${roomId}`
+      : `Room ID: ${roomId}`;
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
+      navigator.clipboard.writeText(url).then(() => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }).catch(() => {
-        fallbackCopy(text);
+        fallbackCopy(url);
       });
     } else {
-      fallbackCopy(text);
+      fallbackCopy(url);
     }
 
     function fallbackCopy(str: string) {
@@ -117,6 +120,11 @@ export default function Game({ session, onLeave }: GameProps) {
               🎯 Practice Mode
             </span>
           )}
+          {isBotGame && (
+            <span className="text-xs bg-purple-600/20 text-purple-300 border border-purple-500/40 px-2 py-0.5 rounded-full font-medium">
+              🤖 vs Stockfish
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -124,12 +132,12 @@ export default function Game({ session, onLeave }: GameProps) {
           <span className="font-mono font-bold text-accent-blue text-sm bg-dark-600 px-3 py-1 rounded-lg">
             {roomId}
           </span>
-          {!isPractice && (
+          {!isPractice && !isBotGame && (
             <button
               onClick={handleCopyRoomLink}
               className="text-xs bg-dark-600 hover:bg-dark-500 text-gray-400 hover:text-white px-2 py-1 rounded transition"
             >
-              {copied ? "✓ Copied" : "Copy"}
+              {copied ? "✓ Copied" : "Share"}
             </button>
           )}
         </div>

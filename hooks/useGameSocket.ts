@@ -5,6 +5,8 @@ import { useSound } from "./useSound";
 import { useStockfishBrowser } from "./useStockfishBrowser";
 import type { GameState, GameResult, Suggestion, Session, MoveInput } from "../types";
 
+const BOT_NAME = "Stockfish Bot";
+
 const INITIAL_STATE: GameState = {
   fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
   sanHistory: [],
@@ -26,7 +28,13 @@ interface UndoRequest {
 }
 
 export function useGameSocket(session: Session) {
-  const { roomId, color: myColor, isPractice, playerName } = session;
+  const { roomId, color: myColor, isPractice, playerName, isBotGame } = session;
+
+  // Which color the bot plays (opposite of human) in a bot game
+  const botColor: "white" | "black" | null =
+    isBotGame && myColor !== "spectator" && myColor !== "both"
+      ? myColor === "white" ? "black" : "white"
+      : null;
 
   const [gameState, setGameState] = useState<GameState>(session.state ?? INITIAL_STATE);
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
@@ -34,7 +42,7 @@ export function useGameSocket(session: Session) {
   const [undoRequest, setUndoRequest] = useState<UndoRequest | null>(null);
   const [connectionStatus, setConnectionStatus] = useState("connected");
   const [waitingForOpponent, setWaitingForOpponent] = useState(
-    isPractice ? false : !session.state?.players?.white || !session.state?.players?.black
+    isPractice || isBotGame ? false : !session.state?.players?.white || !session.state?.players?.black
   );
 
   const sounds = useSound();
@@ -44,6 +52,8 @@ export function useGameSocket(session: Session) {
   const gameStateRef = useRef<GameState>(session.state ?? INITIAL_STATE);
   // Track our own optimistic moves so we don't double-play sounds when the echo arrives
   const pendingOwnMoveRef = useRef(false);
+  // Prevent concurrent bot move submissions
+  const botMoveInProgressRef = useRef(false);
 
   // Keep ref in sync so action callbacks always see the latest state
   useEffect(() => {
@@ -52,6 +62,8 @@ export function useGameSocket(session: Session) {
 
   const computeSuggestion = useCallback(
     (fen: string) => {
+      // Never show AI suggestions in bot games — the bot is the opponent
+      if (isBotGame) return;
       latestFenRef.current = fen;
       setSuggestion(null);
       getBestMoveBrowser(fen, isPractice ? 12 : 14).then((uciMove) => {
@@ -65,7 +77,7 @@ export function useGameSocket(session: Session) {
         });
       });
     },
-    [isPractice, getBestMoveBrowser]
+    [isPractice, isBotGame, getBestMoveBrowser]
   );
 
   // Compute initial suggestion for practice mode
@@ -74,6 +86,18 @@ export function useGameSocket(session: Session) {
     const fen = session.state?.fen ?? INITIAL_STATE.fen;
     const t = setTimeout(() => computeSuggestion(fen), 500);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // For bot games: if bot moves first (bot is white), trigger the opening bot move
+  useEffect(() => {
+    if (!isBotGame || !botColor) return;
+    const initialState = session.state ?? INITIAL_STATE;
+    if (initialState.isGameOver || gameResult) return;
+    if (initialState.turn === botColor) {
+      const t = setTimeout(() => void triggerBotMove(initialState.fen), 600);
+      return () => clearTimeout(t);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -135,7 +159,14 @@ export function useGameSocket(session: Session) {
           else sounds.playMove();
           if (state.isCheck) sounds.playCheck();
         }
-        if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
+        if (!state.isGameOver && state.fen) {
+          // In bot game: if it's the bot's turn now, let bot move; otherwise compute suggestion
+          if (isBotGame && botColor && state.turn === botColor) {
+            void triggerBotMove(state.fen);
+          } else {
+            computeSuggestion(state.fen);
+          }
+        }
       }
     );
 
@@ -163,7 +194,14 @@ export function useGameSocket(session: Session) {
       setGameState(state);
       setGameResult(null);
       setSuggestion(null);
-      if (!state.isGameOver && state.fen) computeSuggestion(state.fen);
+      botMoveInProgressRef.current = false;
+      if (!state.isGameOver && state.fen) {
+        if (isBotGame && botColor && state.turn === botColor) {
+          setTimeout(() => void triggerBotMove(state.fen), 400);
+        } else {
+          computeSuggestion(state.fen);
+        }
+      }
     });
 
     channel.bind("player-disconnected", ({ color }: { color: string }) => {
@@ -194,6 +232,36 @@ export function useGameSocket(session: Session) {
       console.error(`[post ${endpoint}]`, err);
     }
   }, []);
+
+  /** Submit the Stockfish bot's best move for the current position. */
+  const triggerBotMove = useCallback(
+    async (fen: string) => {
+      if (botMoveInProgressRef.current) return;
+      botMoveInProgressRef.current = true;
+      try {
+        const uciMove = await getBestMoveBrowser(fen, 15);
+        if (!uciMove || uciMove === "(none)") return;
+        await fetch("/api/room/move", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            roomId,
+            move: {
+              from: uciMove.slice(0, 2),
+              to: uciMove.slice(2, 4),
+              promotion: uciMove[4] ?? undefined,
+            },
+            playerName: BOT_NAME,
+          }),
+        });
+      } catch (err) {
+        console.error("[triggerBotMove]", err);
+      } finally {
+        botMoveInProgressRef.current = false;
+      }
+    },
+    [getBestMoveBrowser, roomId]
+  );
 
   const makeMove = useCallback(
     (move: MoveInput) => {
@@ -290,6 +358,7 @@ export function useGameSocket(session: Session) {
     undoRequest,
     connectionStatus,
     waitingForOpponent,
+    isBotGame: !!isBotGame,
     getChess,
     actions: { makeMove, resign, requestUndo, acceptUndo, rejectUndo, restartGame },
   };

@@ -22,6 +22,8 @@ export interface GameState {
   timers: { white: number; black: number };
   players: { white: PlayerData | null; black: PlayerData | null };
   isPractice: boolean;
+  isBotGame?: boolean;
+  timeControl?: number;
 }
 
 export interface Suggestion {
@@ -42,6 +44,8 @@ export interface Session {
   playerName?: string;
   isPractice?: boolean;
   practiceColor?: PlayerColor;
+  isBotGame?: boolean;
+  timeControl?: number;
   state?: GameState;
 }
 

@@ -29,6 +29,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(200).json({ roomId: id, color: existingColor, isRejoin: true, state });
   }
 
+  // Bot game rooms don't accept new human players — assign spectator directly
+  if (room.isBotGame) {
+    const state = computeGameState(room);
+    return res.status(200).json({ roomId: id, color: "spectator", isRejoin: false, state });
+  }
+
   // Assign a color to the new player
   const preferred = color === "white" || color === "black" ? color : "black";
   let assignedColor: "white" | "black" | "spectator";

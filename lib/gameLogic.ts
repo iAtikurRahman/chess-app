@@ -59,6 +59,8 @@ export function computeGameState(room: RoomData): GameState {
       black: room.players.black ? { name: room.players.black.name, connected: true } : null,
     },
     isPractice: room.isPractice,
+    isBotGame: room.isBotGame,
+    timeControl: room.timeControl,
   };
 }
 

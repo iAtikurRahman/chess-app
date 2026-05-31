@@ -9,3 +9,7 @@ export const pusherServer = new Pusher({
 });
 
 export const channelName = (roomId: string) => `game-${roomId}`;
+
+/** Personal channel for challenge notifications */
+export const personalChannel = (email: string) =>
+  `user-${email.replace(/[^a-zA-Z0-9]/g, "-")}`;
